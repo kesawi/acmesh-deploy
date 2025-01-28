@@ -75,19 +75,42 @@ webmin_deploy() {
 
 
   # copy overwrite existing certificate
+  _info "Copying webmin certificate files to $_target_directory"
   cat $_ckey $_ccert > $_target_directory/$_target_certificate
-    
+  _err_code="$?"
+  if [ "$_err_code" != "0" ]; then
+    _err "Error: Failed to copy private key to $_target_directory/$_target_certificate"
+    return $_err_code
+  fi  
   # copy intermediate certificate
   cp $_cca $_target_directory/$_target_ca
+  _err_code="$?"
+  if [ "$_err_code" != "0" ]; then
+    _err "Error: Failed to copy webmin CA certificate key to $_target_directory/$_target_ca"
+    return $_err_code
+  fi  
   
   # check for intermediate string setting in Webmin configuration file and update/add
+  _info "Checking for intermediate certificate string in Webmin configuration file and updating/adding"
   if grep -q "extracas" "$_target_directory/$_target_conf"; then
-	sed -i "/extracas/c\\$_target_directory/$_target_ca" "$_target_directory/$_target_conf"
+	  _info "Updating intermediate certificate string in Webmin configuration file"
+    sed -i "/extracas/c\\$_target_directory/$_target_ca" "$_target_directory/$_target_conf"
+    _err_code="$?"
+    if [ "$_err_code" != "0" ]; then
+      _err "Error: Failed to update intermediate certificate string in Webmin configuration file"
+    return $_err_code
+  fi  
   else
-	echo "extracas=$_target_directory/$_target_ca" >> "$_target_directory/$_target_conf"
-  fi
+    _info "Adding intermediate certificate string to Webmin configuration file"
+    echo "extracas=$_target_directory/$_target_ca" >> "$_target_directory/$_target_conf"
+    _err_code="$?"
+    if [ "$_err_code" != "0" ]; then
+        _err "Error: Failed to update intermediate certificate string in Webmin configuration file"
+    return $_err_code
+	fi
   
   # restart webmin
+  _info "Restarting webmin"
   $_target_cmd
   _err_code="$?"
   if [ "$_err_code" != "0" ]; then

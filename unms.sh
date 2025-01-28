@@ -84,18 +84,38 @@ unms_deploy() {
   _debug2 DEPLOY_UNMS_CMD "$_target_cmd"
 
 
-  # copy overwrite existing certificate
+  # copy to overwrite existing certificate
+  _info "Copying UNMS certificate files to $_target_directory"
   cp $_ckey $_target_directory/$_target_key
+    _err_code="$?"
+  if [ $_err_code -ne 0 ]; then
+    _err "Error: Failed to copy UNMS private key to $_target_directory/$_target_key"
+    return $_err_code
+  fi
   cp $_ccert $_target_directory/$_target_certificate
+    _err_code="$?"
+  if [ $_err_code -ne 0 ]; then
+    _err "Error: Failed to copy UNMS public certificate to $_target_directory/$_target_certificate"
+    return $_err_code
+  fi
   cp $_cca $_target_directory/$_target_ca
+   _err_code="$?"
+  if [ $_err_code -ne 0 ]; then
+    _err  "Error: Failed to copy UNMS CA certificate to $_target_directory/$_target_ca"
+    return $_err_code
+  fi
   cp $_cfullchain $_target_directory/$_target_fullchain
-  
-  
-  # restart unms
+  _err_code="$?"
+  if [ $_err_code -ne 0 ]; then
+    _err "Error: Failed to copy UNMS full certificate chain to $_target_directory/$_target_fullchain"
+    return $_err_code
+  fi
+    
+  # restart UNMS
   $_target_cmd
   _err_code="$?"
   if [ "$_err_code" != "0" ]; then
-    _err "Error code $_err_code returned from restarting unms"
+    _err "Error code $_err_code returned from restarting UNMS"
   fi
 
   return $_err_code
