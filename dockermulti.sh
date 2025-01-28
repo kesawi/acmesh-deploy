@@ -27,37 +27,46 @@
 #              the key and fullchain files (this has been added to support the docker image "jlesage/crashplan-pro")
 #
 # p12 requires the following labels:
+# - sh.acme.autoload.certpath: The path to the PKCS12 files within the container (default is /config)
 # - sh.acme.autoload.p12name: The name of the PKCS12 file to be created
 #
 # ca requires the following labels:
+# - sh.acme.autoload.certpath: The path to the certificate files within the container (default is /config)
 # - sh.acme.autoload.keyname: The name of the key file to be created
 # - sh.acme.autoload.certname: The name of the cert file to be created
 # - sh.acme.autoload.caname: The name of the ca file to be created
 #
 # all requires the following labels:
+# - sh.acme.autoload.certpath: The path to the certificate files within the container (default is /config)
 # - sh.acme.autoload.keyname: The name of the key file to be created
 # - sh.acme.autoload.certname: The name of the cert file to be created
 # - sh.acme.autoload.caname: The name of the ca file to be created
 # - sh.acme.autoload.fullchainname: The name of the fullchain file to be created
 #
 # cert requires the following labels:
+# - sh.acme.autoload.certpath: The path to the certificate files within the container (default is /config)
 # - sh.acme.autoload.keyname: The name of the key file to be created
 # - sh.acme.autoload.certname: The name of the cert file to be created
 #
 # fullchain requires the following labels:
+# - sh.acme.autoload.certpath: The path to the certificate files within the container (default is /config)
 # - sh.acme.autoload.keyname: The name of the key file to be created
 # - sh.acme.autoload.fullchainname: The name of the fullchain file to be created
 #
 # bundledchain requires the following labels:
+# - sh.acme.autoload.certpath: The path to the bundled file within the container (default is /config)
 # - sh.acme.autoload.bundlename: The name of the bundled file to be created
 #
 # bundledcert requires the following labels:
+# - sh.acme.autoload.certpath: The path to the bundled file within the container (default is /config)
 # - sh.acme.autoload.bundlename: The name of the bundled file to be created
 #
 # bundledca requires the following labels:
+# - sh.acme.autoload.certpath: The path to the bundled file within the container (default is /config)
 # - sh.acme.autoload.bundlename: The name of the bundled file to be created
 #
 # crashplan requires the following labels:
+# - sh.acme.autoload.certpath: The path to the certificate and bundled files within the container (default is /config)
 # - sh.acme.autoload.keyname: The name of the key file to be created
 # - sh.acme.autoload.fullchainname: The name of the fullchain file to be created
 # - sh.acme.autoload.bundlename: The name of the bundled file to be created
