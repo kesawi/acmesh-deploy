@@ -122,9 +122,9 @@ dockermulti_deploy() {
             continue
         fi
 	
-	echo "Processing container $container_id ($container_name)"
+	    echo "Processing container $container_id ($container_name)"
 
-	# Get the CERTPATH & CERTTPYE label from the container
+	    # Get the CERTPATH & CERTTPYE label from the container
         if ! CERTPATH_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.certpath"}}' "$container_id"); then
             echo "Error getting sh.acme.autoload.certpath for $container_id ($container_name)"
             ERROR_FLAG=true
@@ -294,7 +294,7 @@ dockermulti_deploy() {
 			rm /tmp/bundle.pem
             echo "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
         
-         elif [ "$CERTTYPE_LABEL" == "bundledca" ]; then
+        elif [ "$CERTTYPE_LABEL" == "bundledca" ]; then
             # Get BUNDLENAME labels
             if ! BUNDLENAME_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.bundlename"}}' "$container_id"); then
                 echo "Error getting sh.acme.autoload.bundlename for $container_id ($container_name)"
@@ -369,7 +369,8 @@ dockermulti_deploy() {
 		echo "Restarting container: $container_id ($container_name)"
         docker restart "$container_id" || { echo "Error restarting $container_id  ($container_name)"; ERROR_FLAG=true; continue; }
     
-	echo "Container restarted: $container_id ($container_name)"
+	    echo "Container restarted: $container_id ($container_name)"
+        
     done < <(docker ps --filter "label=sh.acme.autoload.domain=$_cdomain" --quiet)
 
     # Check if any errors occurred during processing
