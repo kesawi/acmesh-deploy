@@ -353,7 +353,7 @@ dockermulti_deploy() {
         else
             # Set error flag and print error message
             ERROR_FLAG=true
-            echo "Error, incorrect certificate type label defined for $container_id ($container_name)"
+            echo "Error, incorrect certificate type defined in sh.acme.autoload.certtype for $container_id ($container_name)"
 			continue
         fi
 		
