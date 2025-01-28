@@ -21,3 +21,5 @@ acme.sh --deploy -d ftp.example.com --deploy-hook dockermulti
 ```
 
 Happy to have [issues](https://github.com/kesawi/acmesh-deploy/issues) raised.
+
+Also have created [discussions](https://github.com/kesawi/acmesh-deploy/discussions) for general questions and comments rather than issues.
