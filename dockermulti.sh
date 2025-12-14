@@ -89,8 +89,17 @@
 # - sh.acme.autoload.fullchainname: The name of the fullchain file to be created
 # - sh.acme.autoload.bundlename: The name of the bundled file to be created
 #
-# The script will then copy the generated files to the container and restart the container.
-
+# Use the labels sh.acme.autoload.certuser and sh.acme.autoload.certgroup to set the
+# ownership of the key and certificate files. Leave blank to keep owner and group
+# as the default based on the docker cp command (this may not by the docker user
+# and group). Must specify both user and group to change ownership.
+#
+# Use the label sh.acme.autoload.certumask to set the permissions of the key and
+# certificate files. Leave blank to keep the permissions as the default based on
+# docker behaviour.
+#
+# The script will then copy the generated files to the container, change ownership
+# (if specified), set file properties (if specified) and restart the container.
 
 # Global Variables (either set here by uncommenting or in the environment before calling this script)
 #export DEPLOY_DOCKERMULTI_CONTAINER_P12PASS='xxxxxxxxxx'
@@ -157,6 +166,39 @@ dockermulti_deploy() {
         # Use CERTPATH_LABEL or /config if not set
         DESTINATION_PATH="${CERTPATH_LABEL:-/config}"
 
+        # Get USER and GROUP labels
+        CERTOWNER_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.certuser"}}' "$container_id")
+        CERTGROUP_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.certgroup"}}' "$container_id")
+
+        # Check USER and GROUP labels for ownership
+        if [ -n "$CERTOWNER_LABEL" ] && [ -n "$CERTGROUP_LABEL" ]; then
+            CERTSETOWNERSHIP=1
+        elif [ -z "$CERTOWNER_LABEL" ] && [ -z "$CERTGROUP_LABEL" ]; then
+            CERTSETOWNERSHIP=0
+        else
+            if [ -z "$CERTOWNER_LABEL" ]; then
+                _err "Error: sh.acme.autoload.certuser is missing for $container_id ($container_name), must specify both user and group to change ownership."
+            fi
+            if [ -z "$CERTGROUP_LABEL" ]; then
+                _err "Error: sh.acme.autoload.certgroup is missing for $container_id ($container_name), must specify both user and group to change ownership."
+            fi
+            ERROR_FLAG=true
+            continue
+        fi
+
+        # Get UMASK label
+        CERTUMASK_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.certumask"}}' "$container_id")
+        # Check UMASK label format if set
+        if [ -n "$CERTUMASK_LABEL" ]; then
+            # Validates that CERTUMASK_LABEL is a valid octal permission string (e.g., 755, 0755, 644, 0644)
+            # Accepts both 3-digit (e.g., 600) and 4-digit (e.g., 0600) octal formats
+            if ! [[ "$CERTUMASK_LABEL" =~ ^0?[0-7]{3}$ ]]; then
+            _err "Error: sh.acme.autoload.certumask is malformed for $container_id ($container_name), must be a valid octal value (e.g., 0644 or 644)"
+            ERROR_FLAG=true
+            continue
+            fi
+        fi
+
         # Copy files based on CERTTYPELABEL
         if [ "$CERTTYPE_LABEL" == "p12" ]; then
             # Get P12NAME label
@@ -169,6 +211,16 @@ dockermulti_deploy() {
             # Copy the _import_pkcs12 file into the container
             docker cp "$_import_pkcs12" "$container_id:$DESTINATION_PATH/$P12NAME_LABEL" || { _err "Error copying PKCS12 file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$P12NAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$P12NAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
 
         elif [ "$CERTTYPE_LABEL" == "ca" ]; then
             # Get KEYNAME, CERTNAME, and CANAME labels
@@ -193,6 +245,16 @@ dockermulti_deploy() {
             docker cp "$_ccert" "$container_id:$DESTINATION_PATH/$CERTNAME_LABEL" || { _err "Error copying cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             docker cp "$_cca" "$container_id:$DESTINATION_PATH/$CANAME_LABEL" || { _err "Error copying ca file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$CERTNAME_LABEL $DESTINATION_PATH/$CANAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$CERTNAME_LABEL $DESTINATION_PATH/$CANAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
 
         elif [ "$CERTTYPE_LABEL" == "all" ]; then
             # Get KEYNAME, CERTNAME, CANAME, and FULLCHAINNAME labels
@@ -224,6 +286,16 @@ dockermulti_deploy() {
             docker cp "$_cfullchain" "$container_id:$DESTINATION_PATH/$FULLCHAINNAME_LABEL" || { _err "Error copying fullchain file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
 
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$FULLCHAINNAME_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$CERTNAME_LABEL $DESTINATION_PATH/$CANAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$FULLCHAINNAME_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$CERTNAME_LABEL $DESTINATION_PATH/$CANAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+
         elif [ "$CERTTYPE_LABEL" == "cert" ]; then
             # Get KEYNAME and CERTNAME labels
             if ! KEYNAME_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.keyname"}}' "$container_id"); then
@@ -242,6 +314,16 @@ dockermulti_deploy() {
             docker cp "$_ccert" "$container_id:$DESTINATION_PATH/$CERTNAME_LABEL" || { _err "Error copying cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
 
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$CERTNAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$CERTNAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+
         elif [ "$CERTTYPE_LABEL" == "fullchain" ]; then
             # Get KEYNAME and FULLCHAINNAME labels
             if ! KEYNAME_LABEL=$(docker inspect --format='{{index .Config.Labels "sh.acme.autoload.keyname"}}' "$container_id"); then
@@ -259,6 +341,16 @@ dockermulti_deploy() {
             docker cp "$_ckey" "$container_id:$DESTINATION_PATH/$KEYNAME_LABEL" || { _err "Error copying key file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             docker cp "$_cfullchain" "$container_id:$DESTINATION_PATH/$FULLCHAINNAME_LABEL" || { _err "Error copying cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$FULLCHAINNAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$FULLCHAINNAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
 
         elif [ "$CERTTYPE_LABEL" == "bundledchain" ]; then
             # Get BUNDLENAME labels
@@ -284,7 +376,17 @@ dockermulti_deploy() {
             # Copy the bundled files into the container
             docker cp "/tmp/bundle.pem" "$container_id:$DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error copying VNC cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
 			rm /tmp/bundle.pem
-           _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+            _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
         
         elif [ "$CERTTYPE_LABEL" == "bundledcert" ]; then
             # Get BUNDLENAME labels
@@ -311,6 +413,16 @@ dockermulti_deploy() {
             docker cp "/tmp/bundle.pem" "$container_id:$DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error copying VNC cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
 			rm /tmp/bundle.pem
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
         
         elif [ "$CERTTYPE_LABEL" == "bundledca" ]; then
             # Get BUNDLENAME labels
@@ -337,6 +449,16 @@ dockermulti_deploy() {
             docker cp "/tmp/bundle.pem" "$container_id:$DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error copying VNC cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
 			rm /tmp/bundle.pem
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
 
         elif [ "$CERTTYPE_LABEL" == "crashplan" ]; then
             # Get KEYNAME, BUNDLENAME and FULLCHAINNAME labels
@@ -372,10 +494,20 @@ dockermulti_deploy() {
             # Copy the _ckey, _cfullchain files into the container
             docker cp "$_ckey" "$container_id:$DESTINATION_PATH/$KEYNAME_LABEL" || { _err "Error copying key file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
             docker cp "$_cfullchain" "$container_id:$DESTINATION_PATH/$FULLCHAINNAME_LABEL" || { _err "Error copying cert file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
-			# Copy the bundled files into the container
+            # Copy the bundled files into the container
             docker cp "/tmp/bundle.pem" "$container_id:$DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error copying bundled file to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
-			rm /tmp/bundle.pem
+            rm /tmp/bundle.pem
             _info "$CERTTYPE_LABEL certificate type files successfully copied to container: $container_id ($container_name)"
+
+            # Apply umask if specified
+            if [ -n "$CERTUMASK_LABEL" ]; then
+                docker exec -u 0 "$container_id" sh -c "chmod $CERTUMASK_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$FULLCHAINNAME_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file permissions to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
+            
+            # Apply ownership if specified
+            if [ "$CERTSETOWNERSHIP" -eq 1 ]; then
+                docker exec -u 0 "$container_id" sh -c "chown $CERTOWNER_LABEL:$CERTGROUP_LABEL $DESTINATION_PATH/$KEYNAME_LABEL $DESTINATION_PATH/$FULLCHAINNAME_LABEL $DESTINATION_PATH/$BUNDLENAME_LABEL" || { _err "Error applying file ownership to $container_id ($container_name)"; ERROR_FLAG=true; continue; }
+            fi
 
         else
             # Set error flag and print error message
@@ -388,7 +520,7 @@ dockermulti_deploy() {
         docker restart "$container_id" || { _err "Error restarting $container_id  ($container_name)"; ERROR_FLAG=true; continue; }
     
 	    _info "Container restarted: $container_id ($container_name)"
-        
+
     done < <(docker ps --filter "label=sh.acme.autoload.domain=$_cdomain" --quiet)
 
     # Check if any errors occurred during processing
@@ -397,4 +529,3 @@ dockermulti_deploy() {
         return 1
     fi
 }
-
